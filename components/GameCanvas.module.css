@@ -1,0 +1,12 @@
+.gameCanvas {
+  display: block; /* Prevents extra space below the canvas */
+  max-width: 100%; /* Ensure canvas scales down if container is smaller */
+  max-height: 100%; /* Ensure canvas scales down if container is smaller */
+  object-fit: contain; /* Scales while maintaining aspect ratio, though direct canvas drawing doesn't use this like an img */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  border: 3px solid #1a1a1a; /* A slightly darker border for definition */
+  background-color: #000000; /* Default canvas background if not drawn on immediately */
+  /* Add any other specific styles for the canvas element itself if needed later */
+} 
