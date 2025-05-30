@@ -6,6 +6,7 @@ import {
   MIN_OBSTACLE_HEIGHT_FRACTION, MAX_OBSTACLE_HEIGHT_FRACTION, MIN_PIPE_VISIBLE_PX
 } from '../utils/physics';
 import { checkRectCollision, checkBoundaryCollision, Rect } from '../utils/collision';
+import { gameOverMessages } from '../utils/messages';
 
 interface GameCanvasProps {
   width: number;
@@ -38,6 +39,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
+  const [gameOverMessage, setGameOverMessage] = useState('');
   
   const obstaclesRef = useRef<Obstacle[]>([]);
   const lastObstacleSpawnTimeRef = useRef<number>(0);
@@ -172,6 +174,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       if (gameOverTimeoutRef.current) {
         clearTimeout(gameOverTimeoutRef.current);
         gameOverTimeoutRef.current = null;
+      }
+      // Select a random game over message when the game ends
+      if (isGameOver) {
+        const randomIndex = Math.floor(Math.random() * gameOverMessages.length);
+        setGameOverMessage(gameOverMessages[randomIndex]);
       }
     }
   }, [isGameOver, gameStarted]);
@@ -439,8 +446,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
     context.fillRect(0, 0, width, height);
 
     // Message box dimensions and position
-    const boxWidth = width * 0.6;
-    const boxHeight = height * 0.4;
+    const boxWidth = width * 0.8; // Increased width for longer messages
+    const boxHeight = height * 0.5; // Increased height for message
     const boxX = (width - boxWidth) / 2;
     const boxY = (height - boxHeight) / 2;
 
@@ -454,19 +461,42 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
     context.font = '32px "Press Start 2P"';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText('Game Over', width / 2, boxY + boxHeight * 0.3);
+    context.fillText('Game Over', width / 2, boxY + boxHeight * 0.2);
     
+    // Display the random game over message
+    context.font = '16px "Press Start 2P"'; // Adjusted font size for message
+    // Simple text wrapping
+    const words = gameOverMessage.split(' ');
+    let line = '';
+    let messageY = boxY + boxHeight * 0.35;
+    const lineHeight = 20; // Approximate line height
+    const maxWidth = boxWidth - 40; // Max width for text within the box
+
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line + words[n] + ' ';
+      const metrics = context.measureText(testLine);
+      const testWidth = metrics.width;
+      if (testWidth > maxWidth && n > 0) {
+        context.fillText(line, width / 2, messageY);
+        line = words[n] + ' ';
+        messageY += lineHeight;
+      } else {
+        line = testLine;
+      }
+    }
+    context.fillText(line, width / 2, messageY);
+
     // Score text
     context.font = '24px "Press Start 2P"';
-    context.fillText(`Score: ${score}`, width / 2, boxY + boxHeight * 0.5);
+    context.fillText(`Score: ${score}`, width / 2, messageY + lineHeight * 2); // Adjusted Y position
     
     // Restart text
     context.font = '22px "Press Start 2P"';
-    context.fillText('Click to Restart', width / 2, boxY + boxHeight * 0.7);
+    context.fillText('Click to Restart', width / 2, messageY + lineHeight * 3.5); // Adjusted Y position
 
     // Mute status
     context.font = '16px "Press Start 2P"';
-    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, boxY + boxHeight * 0.85);
+    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, messageY + lineHeight * 5); // Adjusted Y position
   };
 
   // Add mute status to the start screen
