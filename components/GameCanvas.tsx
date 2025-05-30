@@ -505,20 +505,41 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
     context.fillStyle = '#A0C0E0'; // Lighter blue background
     context.fillRect(0, 0, width, height);
 
+    // Draw Zula (much larger)
+    const startScreenZulaWidth = ZULA_WIDTH * 2.5;  // Make Zula 2.5x larger
+    const startScreenZulaHeight = ZULA_HEIGHT * 2.5;
+    if (zulaImageRef.current) {
+      context.drawImage(
+        zulaImageRef.current,
+        width / 2 - startScreenZulaWidth / 2,
+        height / 2 - 180, // Position higher to accommodate larger size
+        startScreenZulaWidth,
+        startScreenZulaHeight
+      );
+    } else {
+      // Fallback if image hasn't loaded
+      context.fillStyle = 'black';
+      context.fillRect(width / 2 - startScreenZulaWidth / 2, height / 2 - 180, startScreenZulaWidth, startScreenZulaHeight);
+      context.fillStyle = 'white';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText("Z", width / 2, height / 2 - 180 + startScreenZulaHeight / 2);
+    }
+
     // Game Title
     context.fillStyle = 'white';
-    context.font = '36px "Press Start 2P"';
+    context.font = '28px "Press Start 2P"';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText("ZULA'S ADVENTURE", width / 2, height / 2 - 60);
+    context.fillText("ZULA'S ADVENTURE", width / 2, height / 2 + 40); // Moved down to accommodate larger Zula
 
     // Click to Start text
-    context.font = '20px "Press Start 2P"';
-    context.fillText('Click to Start', width / 2, height / 2 + 20);
+    context.font = '18px "Press Start 2P"';
+    context.fillText('Click to Start', width / 2, height / 2 + 100); // Adjusted spacing
 
     // Mute status
-    context.font = '16px "Press Start 2P"';
-    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, height / 2 + 60);
+    context.font = '14px "Press Start 2P"';
+    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, height / 2 + 130); // Adjusted spacing
   };
 
   return (
