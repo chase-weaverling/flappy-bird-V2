@@ -3,7 +3,7 @@ import GameCanvas from "@/components/GameCanvas";
 import styles from "@/styles/Home.module.css";
 
 // Game dimensions - make these easily configurable if needed later
-const GAME_WIDTH = 288;
+const GAME_WIDTH = 512;
 const GAME_HEIGHT = 512;
 
 export default function Home() {

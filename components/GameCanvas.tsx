@@ -24,18 +24,126 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
   const zulaImageRef = useRef<HTMLImageElement | null>(null);
   const topTowerImageRef = useRef<HTMLImageElement | null>(null);
   const bottomTowerImageRef = useRef<HTMLImageElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const jumpSoundRef = useRef<HTMLAudioElement | null>(null);
+  const scoreSoundRef = useRef<HTMLAudioElement | null>(null);
+  const collisionSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  const collisionOccurredRef = useRef<boolean>(false);
+  const gameOverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [zulaY, setZulaY] = useState(height * ZULA_START_Y_FRACTION);
   const [velocityY, setVelocityY] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
   
   const obstaclesRef = useRef<Obstacle[]>([]);
   const lastObstacleSpawnTimeRef = useRef<number>(0);
   const nextObstacleIdRef = useRef<number>(0);
 
   const zulaX = width * ZULA_START_X_FRACTION;
+
+  // Initialize audio
+  useEffect(() => {
+    // Background Music
+    const bgAudio = new Audio();
+    bgAudio.src = '/assets/audio/background-music.mp3';
+    bgAudio.loop = true;
+    bgAudio.volume = 0.5;
+    bgAudio.addEventListener('canplaythrough', () => console.log('Background music can play through'));
+    bgAudio.addEventListener('error', (e) => console.error('Background music error:', e));
+    audioRef.current = bgAudio;
+    bgAudio.load();
+
+    // Jump Sound
+    const jumpAudio = new Audio();
+    jumpAudio.src = '/assets/audio/Jump 1.wav';
+    jumpAudio.addEventListener('error', (e) => console.error('Jump sound error:', e));
+    jumpSoundRef.current = jumpAudio;
+    jumpAudio.load();
+
+    // Score Sound
+    const scoreAudio = new Audio();
+    scoreAudio.src = '/assets/audio/Fruit collect 1.wav';
+    scoreAudio.addEventListener('error', (e) => console.error('Score sound error:', e));
+    scoreSoundRef.current = scoreAudio;
+    scoreAudio.load();
+
+    // Collision Sound
+    const collisionAudio = new Audio();
+    collisionAudio.src = '/assets/audio/Blow 1V2.mp3';
+    collisionAudio.addEventListener('error', (e) => console.error('Collision sound error:', e));
+    collisionSoundRef.current = collisionAudio;
+    collisionAudio.load();
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      // No need to pause/nullify effect sounds here as they are short-lived
+      if (gameOverTimeoutRef.current) {
+        clearTimeout(gameOverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Handle audio state changes
+  useEffect(() => {
+    if (!audioRef.current) return;
+
+    const playAudio = async () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      try {
+        if (gameStarted && !isGameOver && !isMuted) {
+          // Reset the audio to the beginning if it's ended
+          if (audio.ended) {
+            audio.currentTime = 0;
+          }
+          await audio.play();
+          console.log('Audio playback started');
+        } else {
+          audio.pause();
+          console.log('Audio playback paused');
+        }
+      } catch (error) {
+        console.error('Audio playback failed:', error);
+      }
+    };
+
+    playAudio();
+  }, [gameStarted, isGameOver, isMuted]);
+
+  // Handle mute toggle
+  const toggleMute = () => {
+    setIsMuted(!isMuted);
+  };
+
+  const playSoundEffect = (soundType: 'jump' | 'score' | 'collision') => {
+    if (isMuted) return;
+
+    let soundToPlay: HTMLAudioElement | null = null;
+    switch (soundType) {
+      case 'jump':
+        soundToPlay = jumpSoundRef.current;
+        break;
+      case 'score':
+        soundToPlay = scoreSoundRef.current;
+        break;
+      case 'collision':
+        soundToPlay = collisionSoundRef.current;
+        break;
+    }
+
+    if (soundToPlay) {
+      soundToPlay.currentTime = 0; // Play from the beginning
+      soundToPlay.play().catch(error => console.error(`Error playing ${soundType} sound:`, error));
+    }
+  };
 
   useEffect(() => {
     const zImg = new Image();
@@ -60,6 +168,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       lastObstacleSpawnTimeRef.current = 0;
       nextObstacleIdRef.current = 0;
       setScore(0);
+      collisionOccurredRef.current = false;
+      if (gameOverTimeoutRef.current) {
+        clearTimeout(gameOverTimeoutRef.current);
+        gameOverTimeoutRef.current = null;
+      }
     }
   }, [isGameOver, gameStarted]);
 
@@ -69,55 +182,54 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
     const context = canvas.getContext('2d');
     if (!context) return;
 
+    // Ensure crisp pixel rendering
+    context.imageSmoothingEnabled = false;
+
     let animationFrameId: number;
+
+    const drawScanlines = () => {
+      if (!context) return;
+      context.save();
+      context.strokeStyle = 'rgba(0, 0, 0, 0.15)'; // Dark, subtle scanlines
+      context.lineWidth = 1;
+      for (let y = 0; y < height; y += 3) { // Adjust spacing (e.g., 3 or 4 pixels)
+        context.beginPath();
+        context.moveTo(0, y + 0.5); // +0.5 for sharper lines
+        context.lineTo(width, y + 0.5);
+        context.stroke();
+      }
+      context.restore();
+    };
 
     const gameLoop = (timestamp: number) => {
       if (isGameOver) {
-        if (context) {
-            context.fillStyle = 'rgba(0, 0, 0, 0.75)';
-            context.fillRect(0, 0, width, height);
-
-            context.fillStyle = 'white';
-            context.font = '32px "Press Start 2P"';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillText('Game Over', width / 2, height / 2 - 50);
-            
-            context.font = '24px "Press Start 2P"';
-            context.fillText(`Score: ${score}`, width / 2, height / 2);
-            
-            context.font = '20px "Press Start 2P"';
-            context.fillText('Click to Restart', width / 2, height / 2 + 50);
-        }
+        renderGameOverScreen(context);
+        drawScanlines();
         return;
       }
 
       if (!gameStarted) {
-        if (context) {
-            context.fillStyle = '#87CEEB';
-            context.fillRect(0, 0, width, height);
-            context.fillStyle = 'white';
-            context.font = '20px "Press Start 2P"';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillText('Click to Start', width / 2, height / 2);
-        }
+        renderStartScreen(context);
+        drawScanlines();
         animationFrameId = requestAnimationFrame(gameLoop);
         return;
       }
       
-      context.fillStyle = '#87CEEB';
+      // Solid dark blue background for a more retro feel
+      context.fillStyle = '#A0C0E0'; // Lighter blue background
       context.fillRect(0, 0, width, height);
 
-      setVelocityY((prevVelocityY) => prevVelocityY + GRAVITY);
-      setZulaY((prevZulaY) => {
-        let newY = prevZulaY + velocityY;
-        // Only prevent going above the screen
-        if (newY - ZULA_HEIGHT / 2 < 0) {
-          newY = ZULA_HEIGHT / 2;
-        }
-        return newY;
-      });
+      if (!collisionOccurredRef.current) {
+        setVelocityY((prevVelocityY) => prevVelocityY + GRAVITY);
+        setZulaY((prevZulaY) => {
+          let newY = prevZulaY + velocityY;
+          // Only prevent going above the screen
+          if (newY - ZULA_HEIGHT / 2 < 0) {
+            newY = ZULA_HEIGHT / 2;
+          }
+          return newY;
+        });
+      }
 
       const zulaRect: Rect = {
         x: zulaX - ZULA_WIDTH / 2,
@@ -127,9 +239,13 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       };
 
       // Check if Zula has fallen off the bottom of the screen
-      if (zulaY + ZULA_HEIGHT / 2 > height) {
-        setIsGameOver(true);
-        return;
+      if (zulaY + ZULA_HEIGHT / 2 > height && !collisionOccurredRef.current && !isGameOver) {
+        collisionOccurredRef.current = true;
+        playSoundEffect('collision');
+        gameOverTimeoutRef.current = setTimeout(() => {
+          setIsGameOver(true);
+          collisionOccurredRef.current = false;
+        }, 500);
       }
 
       if (zulaImageRef.current) {
@@ -149,7 +265,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       context.fillText(score.toString(), width / 2, 20);
 
       const currentTime = timestamp;
-      if (gameStarted && !isGameOver && currentTime - lastObstacleSpawnTimeRef.current > OBSTACLE_SPAWN_INTERVAL) {
+      if (gameStarted && !isGameOver && !collisionOccurredRef.current && currentTime - lastObstacleSpawnTimeRef.current > OBSTACLE_SPAWN_INTERVAL) {
         if (lastObstacleSpawnTimeRef.current === 0 && gameStarted) {
              lastObstacleSpawnTimeRef.current = currentTime - OBSTACLE_SPAWN_INTERVAL -1;
         }
@@ -185,12 +301,17 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
       
       obstaclesRef.current = obstaclesRef.current
         .map(obstacle => {
-          // Check if Zula has passed the obstacle
-          if (!obstacle.scored && obstacle.x + OBSTACLE_WIDTH < zulaX) {
-            setScore(prevScore => prevScore + 1);
-            return { ...obstacle, scored: true, x: obstacle.x - OBSTACLE_SPEED };
+          let newX = obstacle.x;
+          if (!collisionOccurredRef.current) {
+            newX = obstacle.x - OBSTACLE_SPEED;
           }
-          return { ...obstacle, x: obstacle.x - OBSTACLE_SPEED };
+          // Check if Zula has passed the obstacle
+          if (!obstacle.scored && obstacle.x + OBSTACLE_WIDTH < zulaX && !collisionOccurredRef.current) {
+            setScore(prevScore => prevScore + 1);
+            playSoundEffect('score');
+            return { ...obstacle, scored: true, x: newX };
+          }
+          return { ...obstacle, x: newX };
         })
         .filter(obstacle => obstacle.x + OBSTACLE_WIDTH > 0);
 
@@ -211,29 +332,41 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
           height: bottomTowerHeight,
         };
 
-        if (checkRectCollision(zulaRect, topObstacleRect) || checkRectCollision(zulaRect, bottomObstacleRect)) {
-          setIsGameOver(true);
-          return;
+        if (!isGameOver && !collisionOccurredRef.current && (checkRectCollision(zulaRect, topObstacleRect) || checkRectCollision(zulaRect, bottomObstacleRect))) {
+          collisionOccurredRef.current = true;
+          playSoundEffect('collision');
+          gameOverTimeoutRef.current = setTimeout(() => {
+            setIsGameOver(true);
+            collisionOccurredRef.current = false;
+          }, 500);
         }
 
         if (topTowerImageRef.current) {
           context.drawImage(topTowerImageRef.current, obstacle.x, 0, OBSTACLE_WIDTH, obstacle.topHeight);
         } else {
-          context.fillStyle = 'green';
+          context.fillStyle = '#00FFFF'; // Bright Cyan for fallback obstacles
           context.fillRect(obstacle.x, 0, OBSTACLE_WIDTH, obstacle.topHeight);
         }
 
         if (bottomTowerImageRef.current) {
           context.drawImage(bottomTowerImageRef.current, obstacle.x, bottomTowerY, OBSTACLE_WIDTH, bottomTowerHeight);
         } else {
-          context.fillStyle = 'green';
+          context.fillStyle = '#00FFFF'; // Bright Cyan for fallback obstacles
           context.fillRect(obstacle.x, bottomTowerY, OBSTACLE_WIDTH, bottomTowerHeight);
         }
       });
       
-      if (checkBoundaryCollision(zulaRect, height, width)) {
-        setIsGameOver(true);
-        return;
+      drawScanlines(); // Draw scanlines over the game scene
+
+      if (!isGameOver && !collisionOccurredRef.current && checkBoundaryCollision(zulaRect, height, width)) {
+        if (zulaRect.y <= 0) {
+            collisionOccurredRef.current = true;
+            playSoundEffect('collision');
+            gameOverTimeoutRef.current = setTimeout(() => {
+                setIsGameOver(true);
+                collisionOccurredRef.current = false;
+            }, 500);
+        }
       }
 
       animationFrameId = requestAnimationFrame(gameLoop);
@@ -260,6 +393,11 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
         setVelocityY(0);
         setIsGameOver(false);
         setGameStarted(true);
+        collisionOccurredRef.current = false;
+        if (gameOverTimeoutRef.current) {
+          clearTimeout(gameOverTimeoutRef.current);
+          gameOverTimeoutRef.current = null;
+        }
         return;
       }
 
@@ -267,22 +405,91 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width, height }) => {
         setGameStarted(true);
       }
       setVelocityY(JUMP_STRENGTH);
+      playSoundEffect('jump');
+    };
+
+    const handleMuteToggle = (event: KeyboardEvent) => {
+      if (event.code === 'KeyM') {
+        toggleMute();
+      }
     };
 
     const keyboardListener = (event: Event) => handleJumpInput(event as KeyboardEvent);
     const mouseListener = (event: Event) => handleJumpInput(event as MouseEvent);
     const touchListener = (event: Event) => handleJumpInput(event as TouchEvent);
+    const muteListener = (event: Event) => handleMuteToggle(event as KeyboardEvent);
 
     window.addEventListener('keydown', keyboardListener);
     window.addEventListener('mousedown', mouseListener);
     window.addEventListener('touchstart', touchListener);
+    window.addEventListener('keydown', muteListener);
 
     return () => {
       window.removeEventListener('keydown', keyboardListener);
       window.removeEventListener('mousedown', mouseListener);
       window.removeEventListener('touchstart', touchListener);
+      window.removeEventListener('keydown', muteListener);
     };
   }, [gameStarted, isGameOver, height]);
+
+  // Add mute button to the game over screen
+  const renderGameOverScreen = (context: CanvasRenderingContext2D) => {
+    // Game Over screen background
+    context.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    context.fillRect(0, 0, width, height);
+
+    // Message box dimensions and position
+    const boxWidth = width * 0.6;
+    const boxHeight = height * 0.4;
+    const boxX = (width - boxWidth) / 2;
+    const boxY = (height - boxHeight) / 2;
+
+    // Draw a border for the message box
+    context.strokeStyle = 'white';
+    context.lineWidth = 3;
+    context.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+    // Game Over text
+    context.fillStyle = 'white';
+    context.font = '32px "Press Start 2P"';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('Game Over', width / 2, boxY + boxHeight * 0.3);
+    
+    // Score text
+    context.font = '24px "Press Start 2P"';
+    context.fillText(`Score: ${score}`, width / 2, boxY + boxHeight * 0.5);
+    
+    // Restart text
+    context.font = '22px "Press Start 2P"';
+    context.fillText('Click to Restart', width / 2, boxY + boxHeight * 0.7);
+
+    // Mute status
+    context.font = '16px "Press Start 2P"';
+    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, boxY + boxHeight * 0.85);
+  };
+
+  // Add mute status to the start screen
+  const renderStartScreen = (context: CanvasRenderingContext2D) => {
+    // Solid dark blue background for a more retro feel
+    context.fillStyle = '#A0C0E0'; // Lighter blue background
+    context.fillRect(0, 0, width, height);
+
+    // Game Title
+    context.fillStyle = 'white';
+    context.font = '36px "Press Start 2P"';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText("ZULA'S ADVENTURE", width / 2, height / 2 - 60);
+
+    // Click to Start text
+    context.font = '20px "Press Start 2P"';
+    context.fillText('Click to Start', width / 2, height / 2 + 20);
+
+    // Mute status
+    context.font = '16px "Press Start 2P"';
+    context.fillText(`Press 'M' to ${isMuted ? 'Unmute' : 'Mute'}`, width / 2, height / 2 + 60);
+  };
 
   return (
     <canvas
